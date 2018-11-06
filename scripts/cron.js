@@ -7,7 +7,10 @@ function scheduleCron() {
   // Don't forget to set the auto-scheduler to run automatically after midnight :)
   // Credits: original Cron and Buff Scripts by cTheDragons https://goo.gl/2KauV3
   // Mod by SirLouen, 17th Oct 2018
+  // Mod by Lucubro, 25th Oct 2018
   // ChangeLog:
+  // 5th  Nov 2018 - Reintroduced some variables, checks and Buff into Lucubro's refactor
+  // 25th Oct 2018 - Refactoring of the code and optimization
   // 19th Oct 2018 - Merged Buff script with Cron script
   // 18th Oct 2018 - Checks if Cron daily has run once already
 
@@ -33,10 +36,6 @@ function scheduleCron() {
   var url = "https://habitica.com/api/v3/user/class/cast/" + skillId;
   var sleepTime = 200;
 
-  // Yersterday is the desired date
-  var desiredDate = new Date();
-  desiredDate.setDate(desiredDate.getDate() - 1);
-
   var getParamsTemplate = {
    "method" : "get",
    "headers" : {
@@ -52,55 +51,36 @@ function scheduleCron() {
     }
   }
 
-  // Getting the task we need
-  var urlRequest = "https://habitica.com/api/v3/tasks/user?type=dailys";
-  var response = UrlFetchApp.fetch(urlRequest, getParamsTemplate);
-  var tasks = JSON.parse(response).data;
-  var taskIndex = findTask(tasks,dailyTaskName);
-
-  // If no taskIndex found, then end execution
-  if (!taskIndex){
-    Loggger.log("No avoid task set");
-    return;
+  // Autocron if the triggering task is checked.
+  if (isTriggeringDailyChecked(dailyTaskName, getParamsTemplate))
+  {
+    UrlFetchApp.fetch("https://habitica.com/api/v3/cron", postParamsTemplate);
+    Utilities.sleep(10000);// pause for 10K milliseconds (10s) to avoid server issues
   }
+  else
+    Logger.log("Could not cron!");
 
-  var taskId = tasks[taskIndex]["id"];
-
-  // Getting the last day we did the task
-  var urlRequest = "https://habitica.com/api/v3/tasks/"+taskId;
-  var response = UrlFetchApp.fetch(urlRequest, getParamsTemplate);
-  var taskHistory = JSON.parse(response).data.history;
-
-  // If the task has never been run
-  if (!taskHistory.length)
-    return;
-
-  var lastTaskDate = new Date(taskHistory[taskHistory.length-1]["date"]);
-
-  // Cron only if yesterday (desired date) was the last day we did the task
-  if (desiredDate.getDate() === lastTaskDate.getDate()) {
-   Logger.log("Executing Cron");
-   UrlFetchApp.fetch("https://habitica.com/api/v3/cron", postParamsTemplate);
-   Utilities.sleep(10000);// pause for 10K milliseconds (10s) to avoid server issues
-  }
-  else {
-    Logger.log("Can't execute Cron");
-  }
   // Launch buffs regardless of Cron
   for (var i = 0; i < ntimes; i++) {
-   UrlFetchApp.fetch(url, postParamsTemplate);
-   Utilities.sleep(sleepTime);// pause in the loop for 200 milliseconds; //This is to avoid buff being swallowed up from servers too busy.
+    UrlFetchApp.fetch(url, postParamsTemplate);
+    Utilities.sleep(sleepTime); // pause in the loop for 200 milliseconds; //This is to avoid buff being swallowed up from servers too busy.
   }
 }
 
-function findTask(tasks,dailyTaskName){
- var i = 0;
- do {
-   if (tasks[i]["text"]==dailyTaskName){
-     return i;
-   }
- i++;
- }
- while (i < tasks.length);
- return 0;
+function isTriggeringDailyChecked(dailyTaskName, paramsTemplate){
+
+  // Retrieve all the tasks.
+  var response = UrlFetchApp.fetch("https://habitica.com/api/v3/tasks/user?type=dailys", paramsTemplate);
+  var tasks = JSON.parse(response).data;
+
+  // Find the ID of the triggering task.
+  for (var i = 0; i < tasks.length; i++) {
+    if (tasks[i]["text"] === dailyTaskName){
+      return tasks[i]["completed"];
+    }
+  }
+
+  // Check that the task has been found.
+  Logger.log("Cannot find the task!")
+  return false;
 }
